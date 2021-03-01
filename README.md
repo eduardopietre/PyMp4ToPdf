@@ -41,7 +41,4 @@ Verbose mode `-v` is highly recommended as it displays progress.
 Including `--lim 5000`, for example, would cause it to only read the first 5000 frames, instead of the whole file.   
   
 If you would like to finetune and improve the result, you may change `--diff` and `--ssim` default arguments.  
-Changing `--ssim` usually results in better results than changing `--diff`, but since `--diff` is faster and is used first, changing it may lead to better speed-ups. Be careful as `--diff` is highly sensitive.   
-
-### Known Issues ###
-- [ ] Image colors are sometimes deviated to bluish.
+Changing `--ssim` usually results in better results than changing `--diff`, but since `--diff` is faster and is used first, changing it may lead to better speed-ups. Be careful as `--diff` is highly sensitive.  

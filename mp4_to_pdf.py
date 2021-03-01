@@ -68,7 +68,7 @@ class Mp4ToPdf:
             success, image = video.read()
 
             if success:
-                images.append(image)
+                images.append(image[:,:,::-1])  # cv2 reads as BRG, [:,:,::-1] converts it to RGB.
                 count += self.n_frame
                 video.set(1, count)
 
