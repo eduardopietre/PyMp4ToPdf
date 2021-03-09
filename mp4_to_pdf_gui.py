@@ -9,37 +9,26 @@ from skimage.metrics import structural_similarity
 from PIL import Image
 
 
-CALLBACK_READING_FILE = 1
-CALLBACK_DIFFERENCE = 2
-CALLBACK_SSMI = 3
-CALLBACK_DONE = 5
+def to_pct(num, div):
+    return round(num / div * 100)
 
 
-class ConverterThread(QtCore.QThread):
+class Mp4ToPdfWorker(QtCore.QThread):
+    reading_file_update = QtCore.pyqtSignal(int)
+    difference_update = QtCore.pyqtSignal(int)
+    ssmi_update = QtCore.pyqtSignal(int)
+    done = QtCore.pyqtSignal()
 
-    def __init__(self, parent, args_getter):
-        super(ConverterThread, self).__init__(parent)
-        self.args_getter = args_getter
-
-    def run(self):
-        infile, out, n_frame, diff_threshold, ssim_threshold, callback = self.args_getter()
-        converter = Mp4ToPdf(infile, out, n_frame, diff_threshold, ssim_threshold, callback)
-        converter.convert()
-
-
-class Mp4ToPdf:
-    def __init__(self, infile, out, n_frame, diff_threshold, ssim_threshold, callback=None):
+    def __init__(self, infile, out, n_frame, diff_threshold, ssim_threshold):
+        super().__init__()
         self.infile = infile
         self.out = out
         self.n_frame = n_frame
         self.diff_threshold = diff_threshold
         self.ssim_threshold = ssim_threshold
-        self.callback = callback
 
-    def call_callback(self, code, progress=1, length=1):
-        if self.callback:
-            pct = round(progress / length) * 100
-            self.callback(code, pct)
+    def run(self):
+        self.convert()
 
     def get_images(self):
         video = cv2.VideoCapture(self.infile)
@@ -56,12 +45,12 @@ class Mp4ToPdf:
                 count += self.n_frame
                 video.set(1, count)
 
-                self.call_callback(CALLBACK_READING_FILE, count + 1, length)
+                self.reading_file_update.emit(to_pct(count + 1, length))
             else:
                 video.release()
                 break
 
-        self.call_callback(CALLBACK_READING_FILE, length, length)
+        self.reading_file_update.emit(100)
         return images
 
 
@@ -78,7 +67,7 @@ class Mp4ToPdf:
             if equal_pct < self.diff_threshold:
                 pairs.append([img, prev_img])
 
-            self.call_callback(CALLBACK_DIFFERENCE, i + 1, len(images))
+            self.difference_update.emit(to_pct(i + 1, len(images)))
 
         return pairs
 
@@ -90,7 +79,7 @@ class Mp4ToPdf:
             ssim = structural_similarity(p[0], p[1], multichannel=True)
             if ssim < self.ssim_threshold:
                 fails.append(p)
-            self.call_callback(CALLBACK_SSMI, i + 1, len(pairs))
+            self.ssmi_update.emit(to_pct(i + 1, len(pairs)))
 
         return fails
 
@@ -105,7 +94,7 @@ class Mp4ToPdf:
         changes = self.structural_similarity_filter(diff_pairs)
         uniques = [e[0] for e in changes]
         self.save_as_pdf(uniques)
-        self.call_callback(CALLBACK_DONE)
+        self.done.emit()
 
 
 def create_button(text, action=None):
@@ -143,60 +132,68 @@ def create_loading_bar(fixed_width=None):
         bar.setFixedWidth(fixed_width)
     return bar
 
+def create_message_box(alert_type, title, text, information):
+    msg = QtWidgets.QMessageBox()
+    msg.setIcon(alert_type)
+    msg.setText(text)
+    msg.setInformativeText(information)
+    msg.setWindowTitle(title)
+    return msg
+
 class MainWindow(object):
 
     def __init__(self, window):
         window.setObjectName("MainWindow")
-        window.setFixedSize(400, 200)
+        window.setFixedSize(700, 300)
         window.setWindowTitle("MP4 To PDF - GUI")
 
-        self.converter = ConverterThread(None, self.get_converter_args)
+        width = 450
 
         self.file_path = ""
-        self.out_file = ""
 
         self.central_widget = QtWidgets.QWidget(window)
         self.layout = QtWidgets.QVBoxLayout(self.central_widget)
 
         self.layout.addWidget(create_button("Select File", self.select_mp4))
 
-        self.lbl_selected_file = create_label("None", 200)
+        self.lbl_selected_file = create_label("None", width)
+        self.lbl_selected_file.setObjectName("select_file")
         self.layout.addLayout(create_horizontal_box(
             create_label("Selected MP4 File:"),
             self.lbl_selected_file
         ))
 
-        self.cf_nframe = create_int_line_edit("100", 200)
+        self.cf_nframe = create_int_line_edit("100", width)
         self.layout.addLayout(create_horizontal_box(
             create_label("Frame Skip:"),
             self.cf_nframe
         ))
 
-        self.cf_diff = create_int_line_edit("90", 200)
+        self.cf_diff = create_int_line_edit("90", width)
         self.layout.addLayout(create_horizontal_box(
             create_label("Difference Threshold:"),
             self.cf_diff
         ))
 
-        self.cf_smi = create_int_line_edit("90", 200)
+        self.cf_smi = create_int_line_edit("90", width)
         self.layout.addLayout(create_horizontal_box(
             create_label("SMI Threshold:"),
             self.cf_smi
         ))
 
-        self.progress_bar1 = create_loading_bar(200)
+        self.progress_bar1 = create_loading_bar(width)
         self.layout.addLayout(create_horizontal_box(
             create_label("Reading File:"),
             self.progress_bar1
         ))
 
-        self.progress_bar2 = create_loading_bar(200)
+        self.progress_bar2 = create_loading_bar(width)
         self.layout.addLayout(create_horizontal_box(
             create_label("Calculating differences:"),
             self.progress_bar2
         ))
 
-        self.progress_bar3 = create_loading_bar(200)
+        self.progress_bar3 = create_loading_bar(width)
         self.layout.addLayout(create_horizontal_box(
             create_label("Calculating structural similarity:"),
             self.progress_bar3
@@ -207,60 +204,58 @@ class MainWindow(object):
 
         window.setCentralWidget(self.central_widget)
 
-    def progress_callback(self, code, progress_pct):
-        if code == CALLBACK_DONE:
-            msg = QtWidgets.QMessageBox()
-            msg.setIcon(QtWidgets.QMessageBox.Information)
-            msg.setText("Done")
-            msg.setInformativeText(f"Conversion done. Exported as ")
-            msg.setWindowTitle("Done")
-            msg.exec()
-        else:
-            lookup = {
-                CALLBACK_READING_FILE : self.progress_bar1,
-                CALLBACK_DIFFERENCE : self.progress_bar2,
-                CALLBACK_SSMI : self.progress_bar3,
-            }
-            lookup[code].setValue(progress_pct)
+        self.progress_bar1.setValue(0)
+        self.progress_bar2.setValue(0)
+        self.progress_bar3.setValue(0)
 
-    def get_converter_args(self):
-        # order: infile, out, n_frame, diff_threshold, ssim_threshold, callback
-        return (
-            self.file_path,
-            self.out_file,
-            int(self.cf_nframe.text()),
-            int(self.cf_diff.text()),
-            int(self.cf_smi.text()),
-            self.progress_callback
-        )
+    def out_file(self):
+        return f"{self.file_path.replace('.mp4', '')}.pdf"
 
     def convert(self):
+        if not self.file_path:
+            create_message_box(QtWidgets.QMessageBox.Critical, "Error", "Error", "No selected file.").exec_()
+            return
+
         nframe = int(self.cf_nframe.text())
         diff = int(self.cf_diff.text())
         smi = int(self.cf_smi.text())
 
-        self.out_file = f"{self.file_path.replace('.mp4', '')}.pdf"
-
         if nframe < 1 or nframe > 2000:
-            msg = QtWidgets.QMessageBox()
-            msg.setIcon(QtWidgets.QMessageBox.Critical)
-            msg.setText("Error")
-            msg.setInformativeText("'Frame Skip' must be between 1 and 2000.")
-            msg.setWindowTitle("Error")
-            msg.exec_()
+            create_message_box(QtWidgets.QMessageBox.Critical, "Error", "Error", "'Frame Skip' must be between 1 and 2000.").exec_()
             return
 
         if (diff < 1 or diff > 100) or (smi < 1 or smi > 100):
-            msg = QtWidgets.QMessageBox()
-            msg.setIcon(QtWidgets.QMessageBox.Critical)
-            msg.setText("Error")
-            msg.setInformativeText("'Difference Threshold' and 'SMI Threshold' must be between 1 and 100.")
-            msg.setWindowTitle("Error")
-            msg.exec_()
+            create_message_box(QtWidgets.QMessageBox.Critical, "Error", "Error", "'Difference Threshold' and 'SMI Threshold' must be between 1 and 100.").exec_()
             return
 
-        self.converter.start()
         self.btn_convert.setEnabled(False)
+
+        self.thread = Mp4ToPdfWorker(self.file_path, self.out_file(), nframe, diff * 0.01, smi * 0.01) # important * 0.01
+
+        self.thread.reading_file_update.connect(self.signal_reading_file_update)
+        self.thread.difference_update.connect(self.signal_difference_update)
+        self.thread.ssmi_update.connect(self.signal_ssmi_update)
+        self.thread.done.connect(self.signal_done)
+
+        self.thread.start()
+
+    def signal_reading_file_update(self, pct):
+        self.progress_bar1.setValue(pct)
+
+    def signal_difference_update(self, pct):
+        self.progress_bar2.setValue(pct)
+
+    def signal_ssmi_update(self, pct):
+        self.progress_bar3.setValue(pct)
+
+    def signal_done(self):
+        self.btn_convert.setEnabled(True)
+
+        self.progress_bar1.setValue(0)
+        self.progress_bar2.setValue(0)
+        self.progress_bar3.setValue(0)
+
+        create_message_box(QtWidgets.QMessageBox.Information, "Done", "Done", f"Conversion done. Exported as '{self.out_file()}'.").exec_()
 
     def select_mp4(self):
         self.file_path, _ = MainWindow.dialog_file_path("Select the mp4 file", "mp4(*.mp4)")
@@ -271,11 +266,16 @@ class MainWindow(object):
         return QtWidgets.QFileDialog.getOpenFileName(None, title, os.getcwd(), file_filter)
 
 
-
-
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     app.setStyle("Fusion") # ['Breeze', 'Oxygen', 'QtCurve', 'Windows', 'Fusion']
+    app.setStyleSheet("""
+        QLabel{font-size: 12pt;}
+        QPushButton{font-size: 12pt;}
+        QMessageBox{font-size: 12pt;}
+        QLineEdit{font-size: 12pt;}
+        QProgressBar{font-size: 12pt;background-color:#E0E0E0;}
+    """)
     window = QtWidgets.QMainWindow()
 
     ui = MainWindow(window)
