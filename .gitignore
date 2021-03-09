@@ -5,3 +5,6 @@ Exploration.ipynb
 *.pdf
 *.mp4
 .idea
+build
+dist
+*.spec
