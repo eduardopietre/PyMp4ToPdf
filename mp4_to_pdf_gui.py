@@ -9,8 +9,8 @@ from skimage.metrics import structural_similarity
 from PIL import Image
 
 
-def to_pct(num, div):
-    return round(num / div * 100)
+def to_per_mile(num, div):
+    return round(num / div * 1000)
 
 
 class Mp4ToPdfWorker(Thread):
@@ -46,12 +46,12 @@ class Mp4ToPdfWorker(Thread):
                 count += self.n_frame
                 video.set(1, count)
 
-                self.queue.put((self.UPDATE_READING, to_pct(count + 1, length)))
+                self.queue.put((self.UPDATE_READING, to_per_mile(count + 1, length)))
             else:
                 video.release()
                 break
 
-        self.queue.put((self.UPDATE_READING, 100))
+        self.queue.put((self.UPDATE_READING, 1000))
         return images
 
 
@@ -68,9 +68,9 @@ class Mp4ToPdfWorker(Thread):
             if equal_pct < self.diff_threshold:
                 pairs.append([img, prev_img])
 
-            self.queue.put((self.UPDATE_DIFF, to_pct(i + 1, len(images))))
+            self.queue.put((self.UPDATE_DIFF, to_per_mile(i + 1, len(images))))
 
-        self.queue.put((self.UPDATE_DIFF, 100))
+        self.queue.put((self.UPDATE_DIFF, 1000))
 
         return pairs
 
@@ -82,9 +82,9 @@ class Mp4ToPdfWorker(Thread):
             ssim = structural_similarity(p[0], p[1], multichannel=True)
             if ssim < self.ssim_threshold:
                 fails.append(p)
-            self.queue.put((self.UPDATE_SMI, to_pct(i + 1, len(pairs))))
+            self.queue.put((self.UPDATE_SMI, to_per_mile(i + 1, len(pairs))))
 
-        self.queue.put((self.UPDATE_DIFF, 100))
+        self.queue.put((self.UPDATE_DIFF, 1000))
 
         return fails
 
@@ -168,7 +168,7 @@ class MainWindow:
         frame4 = tk.Frame(self.root)
         tk.Label(frame4, text="Reading File:", width=20).pack(padx=10, pady=pady, side=tk.LEFT)
 
-        self.bar1 = tkk.Progressbar(frame4, length=150, mode='determinate', maximum=100)
+        self.bar1 = tkk.Progressbar(frame4, length=150, mode='determinate', maximum=1000)
         self.bar1.pack(pady=pady, side=tk.RIGHT)
         frame4.pack()
 
@@ -176,7 +176,7 @@ class MainWindow:
         frame5 = tk.Frame(self.root)
         tk.Label(frame5, text="Calculating Differences:", width=20).pack(padx=10, pady=pady, side=tk.LEFT)
 
-        self.bar2 = tkk.Progressbar(frame5, length=150, mode='determinate', maximum=100)
+        self.bar2 = tkk.Progressbar(frame5, length=150, mode='determinate', maximum=1000)
         self.bar2.pack(pady=pady, side=tk.RIGHT)
         frame5.pack()
 
@@ -184,7 +184,7 @@ class MainWindow:
         frame6 = tk.Frame(self.root)
         tk.Label(frame6, text="Calculating Structural Similarities:", width=20, wraplength=200).pack(padx=10, pady=pady, side=tk.LEFT)
 
-        self.bar3 = tkk.Progressbar(frame6, length=150, mode='determinate', maximum=100)
+        self.bar3 = tkk.Progressbar(frame6, length=150, mode='determinate', maximum=1000)
         self.bar3.pack(pady=pady, side=tk.RIGHT)
         frame6.pack()
 
