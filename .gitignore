@@ -7,3 +7,6 @@ Exploration.ipynb
 .idea
 build
 dist
+__pycache__
+env
+venv
