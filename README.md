@@ -46,3 +46,7 @@ Changing `--ssim` usually results in better results than changing `--diff`, but 
 ## Environment and Pyinstaller ##
 After creating a Python 3 Virtual Environment, use `pip install -r requirements.txt` to install all required dependencies. If you pretend to use pyinstaller, install it with `pip install -r requirements.txt`.  
 In order to "package" with Pyinstaller, run `pyinstaller mp4_to_pdf_gui.spec` in your Virtual Enviroment.
+
+## License ##
+* PyMp4ToPdf is released without any liability or warranty.  
+* PyMp4ToPdf is licensed under the [GNU General Public License v3.0](LICENSE).
