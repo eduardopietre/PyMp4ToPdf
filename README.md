@@ -3,7 +3,7 @@
   
 ## Requisites ##
 * Python 3.6 or latter
-    * Package OpenCV (tested with [opencv-contrib-python](https://pypi.org/project/opencv-contrib-python/)).
+    * Package [opencv-python](https://pypi.org/project/opencv-python/).
     * Package [Numpy](https://pypi.org/project/numpy/).
     * Package [Scikit-image](https://scikit-image.org/).
     * Package [Pillow](https://pillow.readthedocs.io/en/stable/index.html).
@@ -42,3 +42,7 @@ Including `--lim 5000`, for example, would cause it to only read the first 5000 
   
 If you would like to finetune and improve the result, you may change `--diff` and `--ssim` default arguments.  
 Changing `--ssim` usually results in better results than changing `--diff`, but since `--diff` is faster and is used first, changing it may lead to better speed-ups. Be careful as `--diff` is highly sensitive.  
+
+## Environment and Pyinstaller ##
+After creating a Python 3 Virtual Environment, use `pip install -r requirements.txt` to install all required dependencies. If you pretend to use pyinstaller, install it with `pip install -r requirements.txt`.  
+In order to "package" with Pyinstaller, run `pyinstaller mp4_to_pdf_gui.spec` in your Virtual Enviroment.
