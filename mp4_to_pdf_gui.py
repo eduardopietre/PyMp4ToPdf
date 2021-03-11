@@ -107,7 +107,7 @@ class MainWindow:
     def __init__(self, root, width, height):
         self.root = root
 
-        self.queue = queue.LifoQueue()
+        self.queue = queue.Queue()
         self.file_path = None
 
         self.setup_gui(width, height)
@@ -131,7 +131,7 @@ class MainWindow:
         self.btn_select_file.pack(pady=pady)
 
         # Selected Label
-        self.lbl_selected = tk.Label(self.root, text="Selected: None", font="Arial 9", wraplength=400, height=2, justify="center")
+        self.lbl_selected = tk.Label(self.root, text="Selected: None", font="Arial 9", wraplength=400, height=4, justify="center")
         self.lbl_selected.pack(pady=pady)
 
         # Frame Skip label and spinbox
@@ -267,7 +267,7 @@ if __name__ == "__main__":
     root = tk.Tk()
 
     w = 500
-    h = 370
+    h = 400
 
     ui = MainWindow(root, w, h)
     center(root, w, h)
