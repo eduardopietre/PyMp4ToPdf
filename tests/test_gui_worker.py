@@ -15,6 +15,12 @@ def _worker(tmp_path, n_frame=1, diff=0.90, ssim=0.90):
     )
 
 
+def _patch_frames(monkeypatch, frames):
+    capture = FakeVideoCapture(frames)
+    monkeypatch.setattr("cv2.VideoCapture", lambda _path: capture)
+    return capture
+
+
 def test_worker_constants():
     assert Mp4ToPdfWorker.UPDATE_READING == 1
     assert Mp4ToPdfWorker.UPDATE_DIFF == 2
@@ -31,45 +37,42 @@ def test_run_calls_convert(tmp_path, monkeypatch):
 
 
 def test_convert_emits_done(tmp_path, monkeypatch, red, blue):
+    _patch_frames(monkeypatch, [red, blue])
     worker = _worker(tmp_path)
-    monkeypatch.setattr(worker, "get_images", lambda: [red, blue])
     worker.convert()
     assert worker.queue.items[-1] == (Mp4ToPdfWorker.DONE, 0)
 
 
 def test_convert_writes_pdf_for_scene_change(tmp_path, monkeypatch, red, blue):
+    _patch_frames(monkeypatch, [red, red.copy(), blue])
     worker = _worker(tmp_path)
-    monkeypatch.setattr(worker, "get_images", lambda: [red, red.copy(), blue])
     worker.convert()
     assert_valid_pdf(worker.out, page_count=1)
 
 
 def test_convert_identical_frames_raise_on_empty_pdf(tmp_path, monkeypatch, red):
+    _patch_frames(monkeypatch, [red, red.copy()])
     worker = _worker(tmp_path)
-    monkeypatch.setattr(worker, "get_images", lambda: [red, red.copy()])
     with pytest.raises(IndexError):
         worker.convert()
     assert (Mp4ToPdfWorker.DONE, 0) not in worker.queue.items
 
 
-def test_convert_progress_order(tmp_path, monkeypatch, red, blue, green):
+def test_convert_progress_includes_all_stages(tmp_path, monkeypatch, red, blue, green):
+    _patch_frames(monkeypatch, [red, blue, green])
     worker = _worker(tmp_path)
-    monkeypatch.setattr(worker, "get_images", lambda: [red, blue, green])
     worker.convert()
     codes = [code for code, _ in worker.queue.items]
+    assert Mp4ToPdfWorker.UPDATE_READING in codes
     assert Mp4ToPdfWorker.UPDATE_DIFF in codes
     assert Mp4ToPdfWorker.UPDATE_SMI in codes
     assert codes[-1] == Mp4ToPdfWorker.DONE
-    assert Mp4ToPdfWorker.UPDATE_READING not in codes
 
 
 def test_convert_with_fake_capture(tmp_path, monkeypatch):
     red_bgr = bgr_frame(32, 48, (0, 0, 255))
     blue_bgr = bgr_frame(32, 48, (255, 0, 0))
-    monkeypatch.setattr(
-        "cv2.VideoCapture",
-        lambda _path: FakeVideoCapture([red_bgr, blue_bgr]),
-    )
+    _patch_frames(monkeypatch, [red_bgr, blue_bgr])
     worker = _worker(tmp_path)
     worker.convert()
     assert worker.queue.items[-1] == (Mp4ToPdfWorker.DONE, 0)

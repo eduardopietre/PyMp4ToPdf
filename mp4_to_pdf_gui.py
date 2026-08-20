@@ -1,12 +1,17 @@
-import cv2
-import numpy as np
 import tkinter as tk
 import tkinter.ttk as tkk
 import queue
 from tkinter import filedialog, font, messagebox
 from threading import Thread
-from skimage.metrics import structural_similarity
-from PIL import Image
+
+from mp4_to_pdf_core import (
+    collect_sampled_frames,
+    diff_pairs,
+    iter_sampled_frames,
+    save_bgr_frames_as_pdf,
+    ssim_filter_pairs,
+    unique_frames_from_iterable,
+)
 
 
 def to_per_mile(num, div):
@@ -32,72 +37,74 @@ class Mp4ToPdfWorker(Thread):
         self.convert()
 
     def get_images(self):
-        video = cv2.VideoCapture(self.infile)
-        count = 0
-        images = []
+        def on_progress(count, length):
+            self.queue.put((self.UPDATE_READING, to_per_mile(count + 1, length)))
 
-        length = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-
-        while video.isOpened():
-            success, image = video.read()
-
-            if success:
-                images.append(image[:,:,::-1])  # cv2 reads as BRG, [:,:,::-1] converts it to RGB.
-                count += self.n_frame
-                video.set(1, count)
-
-                self.queue.put((self.UPDATE_READING, to_per_mile(count + 1, length)))
-            else:
-                video.release()
-                break
-
+        images = collect_sampled_frames(
+            self.infile,
+            self.n_frame,
+            on_progress=on_progress,
+        )
         self.queue.put((self.UPDATE_READING, 1000))
         return images
 
-
     def diff_filter(self, images):
-        pairs = []
-
-        for i in range(1, len(images)):
-            img = images[i]
-            prev_img = images[i - 1]
-
-            diff = img - prev_img
-            equal_pct = np.mean(np.abs(diff) < 0.01)  # 0.01 to prevent float pointing.
-
-            if equal_pct < self.diff_threshold:
-                pairs.append([img, prev_img])
-
-            self.queue.put((self.UPDATE_DIFF, to_per_mile(i + 1, len(images))))
-
+        pairs = diff_pairs(
+            images,
+            self.diff_threshold,
+            on_progress=lambda current, total: self.queue.put(
+                (self.UPDATE_DIFF, to_per_mile(current, total))
+            ),
+        )
         self.queue.put((self.UPDATE_DIFF, 1000))
-
         return pairs
 
-
     def structural_similarity_filter(self, pairs):
-        fails = []
-
-        for i, p in enumerate(pairs):
-            ssim = structural_similarity(p[0], p[1], channel_axis=-1)
-            if ssim < self.ssim_threshold:
-                fails.append(p)
-            self.queue.put((self.UPDATE_SMI, to_per_mile(i + 1, len(pairs))))
-
+        fails = ssim_filter_pairs(
+            pairs,
+            self.ssim_threshold,
+            on_progress=lambda current, total: self.queue.put(
+                (self.UPDATE_SMI, to_per_mile(current, total))
+            ),
+        )
         self.queue.put((self.UPDATE_DIFF, 1000))
-
         return fails
 
-
     def save_as_pdf(self, images):
-        as_images = [Image.fromarray(image) for image in images]
-        as_images[0].save(self.out, "PDF", resolution=100.0, save_all=True, append_images=as_images[1:])
+        save_bgr_frames_as_pdf(self.out, images)
 
     def convert(self):
-        images = self.get_images()
-        diff_pairs = self.diff_filter(images)
-        changes = self.structural_similarity_filter(diff_pairs)
-        uniques = [e[0] for e in changes]
+        length_holder = {"length": 1}
+
+        def on_open(length, fps):
+            length_holder["length"] = max(length, 1)
+
+        def on_progress(count, length):
+            self.queue.put((self.UPDATE_READING, to_per_mile(count + 1, length)))
+
+        def on_pair(index):
+            estimated = max(1, (length_holder["length"] + self.n_frame - 1) // self.n_frame)
+            self.queue.put((self.UPDATE_DIFF, to_per_mile(index, estimated)))
+
+        def on_ssim(index):
+            estimated = max(1, (length_holder["length"] + self.n_frame - 1) // self.n_frame)
+            self.queue.put((self.UPDATE_SMI, to_per_mile(index, estimated)))
+
+        uniques, _image_count, _pair_count = unique_frames_from_iterable(
+            iter_sampled_frames(
+                self.infile,
+                self.n_frame,
+                on_open=on_open,
+                on_progress=on_progress,
+            ),
+            self.diff_threshold,
+            self.ssim_threshold,
+            on_pair=on_pair,
+            on_ssim=on_ssim,
+        )
+        self.queue.put((self.UPDATE_READING, 1000))
+        self.queue.put((self.UPDATE_DIFF, 1000))
+        self.queue.put((self.UPDATE_DIFF, 1000))
         self.save_as_pdf(uniques)
         self.queue.put((self.DONE, 0))
 

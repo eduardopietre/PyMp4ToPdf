@@ -31,6 +31,16 @@ def test_fake_capture_read_and_seek():
     assert frame[0, 0, 0] == 3
 
 
+def test_fake_capture_grab_skips_without_returning_pixels():
+    frames = [bgr_frame(2, 2, (i, 0, 0)) for i in range(4)]
+    capture = FakeVideoCapture(frames)
+    ok, frame = capture.read()
+    assert ok and frame[0, 0, 0] == 0
+    assert capture.grab() is True
+    ok, frame = capture.read()
+    assert ok and frame[0, 0, 0] == 2
+
+
 def test_fake_capture_read_past_end():
     capture = FakeVideoCapture([bgr_frame(2, 2, (1, 2, 3))])
     capture.read()

@@ -24,19 +24,19 @@ def _patch_capture(monkeypatch, frames, fps=30.0):
     return capture
 
 
-def test_cli_converts_bgr_to_rgb(monkeypatch):
+def test_keeps_opencv_bgr_order(monkeypatch):
     bgr = bgr_frame(16, 16, (0, 0, 255))
     _patch_capture(monkeypatch, [bgr])
     images = _cli().get_images()
     assert len(images) == 1
-    np.testing.assert_array_equal(images[0][0, 0], (255, 0, 0))
+    np.testing.assert_array_equal(images[0][0, 0], (0, 0, 255))
 
 
-def test_gui_converts_bgr_to_rgb(monkeypatch):
+def test_gui_keeps_opencv_bgr_order(monkeypatch):
     bgr = bgr_frame(16, 16, (255, 0, 0))
     _patch_capture(monkeypatch, [bgr])
     images = _gui().get_images()
-    np.testing.assert_array_equal(images[0][0, 0], (0, 0, 255))
+    np.testing.assert_array_equal(images[0][0, 0], (255, 0, 0))
 
 
 @pytest.mark.parametrize("n_frame, expected_indexes", [
@@ -64,7 +64,7 @@ def test_gui_frame_skip(monkeypatch, n_frame, expected_indexes):
     frames = [bgr_frame(8, 8, (i, 0, 0)) for i in range(4)]
     _patch_capture(monkeypatch, frames)
     images = _gui(n_frame=n_frame).get_images()
-    got = [int(img[0, 0, 2]) for img in images]
+    got = [int(img[0, 0, 0]) for img in images]
     assert got == expected_indexes
 
 
@@ -78,7 +78,7 @@ def test_cli_lim_stops_after_count_exceeds_limit(monkeypatch):
     frames = [bgr_frame(8, 8, (i, 0, 0)) for i in range(20)]
     _patch_capture(monkeypatch, frames)
     images = _cli(n_frame=1, lim=3).get_images()
-    assert [int(img[0, 0, 2]) for img in images] == [0, 1, 2, 3]
+    assert [int(img[0, 0, 0]) for img in images] == [0, 1, 2, 3]
 
 
 def test_cli_lim_none_reads_all(monkeypatch):
@@ -130,3 +130,20 @@ def test_cli_logs_video_info_when_verbose(monkeypatch, capsys):
     assert "FPS: 25.0" in out
     assert "Lenght: 2 frames" in out
     assert "Duration:" in out
+
+
+def test_large_nframe_still_samples_correct_indexes(monkeypatch):
+    frames = [bgr_frame(8, 8, (i, i, i)) for i in range(40)]
+    capture = _patch_capture(monkeypatch, frames)
+    images = _cli(n_frame=10).get_images()
+    assert [int(img[0, 0, 0]) for img in images] == [0, 10, 20, 30]
+    assert capture.seek_positions == []
+
+
+def test_small_nframe_grabs_instead_of_seeking(monkeypatch):
+    frames = [bgr_frame(8, 8, (i, i, i)) for i in range(6)]
+    capture = _patch_capture(monkeypatch, frames)
+    images = _cli(n_frame=2).get_images()
+    assert [int(img[0, 0, 0]) for img in images] == [0, 2, 4]
+    assert capture.seek_positions == []
+    assert capture.grab_count >= 2

@@ -11,12 +11,11 @@ def test_cli_reads_real_mp4_and_converts_color(tmp_path, monkeypatch):
     blue_bgr = bgr_frame(32, 48, (255, 0, 0))
     path = tmp_path / "clip.mp4"
     write_video(path, [red_bgr, red_bgr, blue_bgr, blue_bgr], fps=10)
-    monkeypatch.setattr("mp4_to_pdf.args", type("A", (), {"infile": str(path)})(), raising=False)
     converter = Mp4ToPdf(str(path), str(tmp_path / "out.pdf"), 1, None, 0.90, 0.90, verbose=False)
     images = converter.get_images()
     assert len(images) >= 1
     first = images[0][16, 24]
-    assert first[0] > first[2]
+    assert first[2] > first[0]
 
 
 @pytest.mark.integration
@@ -60,13 +59,13 @@ def test_to_per_mile_used_by_worker_progress():
     assert values[-1] == 1000
 
 
-def test_worker_does_not_put_done_if_get_images_raises(tmp_path, monkeypatch):
+def test_worker_does_not_put_done_if_capture_raises(tmp_path, monkeypatch):
     worker = Mp4ToPdfWorker(RecordingQueue(), str(tmp_path / "in.mp4"), str(tmp_path / "out.pdf"), 1, 0.90, 0.90)
 
-    def boom():
+    def boom(*_args, **_kwargs):
         raise RuntimeError("cannot read")
 
-    monkeypatch.setattr(worker, "get_images", boom)
+    monkeypatch.setattr("cv2.VideoCapture", boom)
     with pytest.raises(RuntimeError):
         worker.convert()
     assert worker.queue.items == []

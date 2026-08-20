@@ -51,6 +51,8 @@ class FakeVideoCapture:
         self.fps = fps
         self.idx = 0
         self.opened = True
+        self.grab_count = 0
+        self.seek_positions = []
 
     def get(self, prop):
         if prop == cv2.CAP_PROP_FRAME_COUNT:
@@ -69,8 +71,16 @@ class FakeVideoCapture:
             return True, frame.copy()
         return False, None
 
+    def grab(self):
+        self.grab_count += 1
+        if self.opened and 0 <= self.idx < len(self.frames):
+            self.idx += 1
+            return True
+        return False
+
     def set(self, prop, value):
         if prop == 1 or prop == cv2.CAP_PROP_POS_FRAMES:
+            self.seek_positions.append(int(value))
             self.idx = int(value)
             return True
         return False
