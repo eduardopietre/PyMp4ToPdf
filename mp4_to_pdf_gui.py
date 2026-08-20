@@ -79,7 +79,7 @@ class Mp4ToPdfWorker(Thread):
         fails = []
 
         for i, p in enumerate(pairs):
-            ssim = structural_similarity(p[0], p[1], multichannel=True)
+            ssim = structural_similarity(p[0], p[1], channel_axis=-1)
             if ssim < self.ssim_threshold:
                 fails.append(p)
             self.queue.put((self.UPDATE_SMI, to_per_mile(i + 1, len(pairs))))
