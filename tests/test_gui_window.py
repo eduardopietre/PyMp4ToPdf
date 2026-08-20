@@ -246,6 +246,9 @@ def test_update_ui_done_reenables_button(main_window, monkeypatch):
     main_window.btn_convert["state"] = "disabled"
     main_window.update_ui(Mp4ToPdfWorker.DONE, 0)
     assert str(main_window.btn_convert["state"]) == "normal"
+    assert main_window.bar1["value"] == 1000
+    assert main_window.bar2["value"] == 1000
+    assert main_window.bar3["value"] == 1000
     info.assert_called_once()
     assert "out.pdf" in info.call_args[0][1]
 
@@ -266,6 +269,44 @@ def test_refresh_drains_queue(main_window):
     assert main_window.bar1["value"] == 50
     assert main_window.bar2["value"] == 70
     assert main_window.queue.empty()
+
+
+@pytest.mark.gui
+def test_refresh_applies_progress_before_done_popup(main_window, monkeypatch):
+    painted = []
+    shown = []
+
+    def fake_update_idletasks():
+        painted.append(
+            (
+                main_window.bar1["value"],
+                main_window.bar2["value"],
+                main_window.bar3["value"],
+            )
+        )
+
+    def fake_showinfo(*args, **kwargs):
+        shown.append(
+            (
+                main_window.bar1["value"],
+                main_window.bar2["value"],
+                main_window.bar3["value"],
+            )
+        )
+
+    monkeypatch.setattr(main_window.root, "update_idletasks", fake_update_idletasks)
+    monkeypatch.setattr(tk.messagebox, "showinfo", fake_showinfo)
+    main_window.file_path = "out.mp4"
+    main_window.queue.put((Mp4ToPdfWorker.UPDATE_READING, 1000))
+    main_window.queue.put((Mp4ToPdfWorker.UPDATE_DIFF, 1000))
+    main_window.queue.put((Mp4ToPdfWorker.UPDATE_SMI, 1000))
+    main_window.queue.put((Mp4ToPdfWorker.DONE, 0))
+    main_window.refresh()
+
+    assert painted
+    assert painted[0] == (1000, 1000, 1000)
+    assert shown == [(1000, 1000, 1000)]
+    assert str(main_window.btn_convert["state"]) == "normal"
 
 
 @pytest.mark.gui

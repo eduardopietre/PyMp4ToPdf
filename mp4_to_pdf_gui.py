@@ -104,7 +104,7 @@ class Mp4ToPdfWorker(Thread):
         )
         self.queue.put((self.UPDATE_READING, 1000))
         self.queue.put((self.UPDATE_DIFF, 1000))
-        self.queue.put((self.UPDATE_DIFF, 1000))
+        self.queue.put((self.UPDATE_SMI, 1000))
         self.save_as_pdf(uniques)
         self.queue.put((self.DONE, 0))
 
@@ -250,14 +250,26 @@ class MainWindow:
         elif code == Mp4ToPdfWorker.UPDATE_SMI:
             self.bar3["value"] = value
         elif code == Mp4ToPdfWorker.DONE:
+            self.bar1["value"] = 1000
+            self.bar2["value"] = 1000
+            self.bar3["value"] = 1000
             self.btn_convert["state"] = "normal"
+            self.root.update_idletasks()
             tk.messagebox.showinfo("Done", f"Done. File exported as '{self.out_file()}'.")
 
 
     def refresh(self):
+        done_event = None
         while not self.queue.empty():
             data = self.queue.get()
+            if data[0] == Mp4ToPdfWorker.DONE:
+                done_event = data
+                continue
             self.update_ui(data[0], data[1])
+
+        self.root.update_idletasks()
+        if done_event is not None:
+            self.update_ui(done_event[0], done_event[1])
 
         self.root.after(200, self.refresh)
 

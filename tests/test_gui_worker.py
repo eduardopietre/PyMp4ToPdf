@@ -67,6 +67,11 @@ def test_convert_progress_includes_all_stages(tmp_path, monkeypatch, red, blue, 
     assert Mp4ToPdfWorker.UPDATE_DIFF in codes
     assert Mp4ToPdfWorker.UPDATE_SMI in codes
     assert codes[-1] == Mp4ToPdfWorker.DONE
+    assert (Mp4ToPdfWorker.UPDATE_READING, 1000) in worker.queue.items
+    assert (Mp4ToPdfWorker.UPDATE_DIFF, 1000) in worker.queue.items
+    assert (Mp4ToPdfWorker.UPDATE_SMI, 1000) in worker.queue.items
+    done_at = worker.queue.items.index((Mp4ToPdfWorker.DONE, 0))
+    assert worker.queue.items.index((Mp4ToPdfWorker.UPDATE_SMI, 1000)) < done_at
 
 
 def test_convert_with_fake_capture(tmp_path, monkeypatch):
