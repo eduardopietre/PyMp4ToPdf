@@ -1,8 +1,13 @@
-import cv2
-import numpy as np
 import datetime
-from skimage.metrics import structural_similarity
-from PIL import Image
+
+from mp4_to_pdf_core import (
+    collect_sampled_frames,
+    diff_pairs,
+    iter_sampled_frames,
+    save_bgr_frames_as_pdf,
+    ssim_filter_pairs,
+    unique_frames_from_iterable,
+)
 
 
 class Mp4ToPdf:
@@ -16,35 +21,18 @@ class Mp4ToPdf:
         self.ssim_threshold = ssim_threshold
         self.verbose = verbose
 
-
     def log(self, text):
         if self.verbose:
             print(text)
 
-
-    # Print iterations progress
-    # from https://stackoverflow.com/questions/3173320/text-progress-bar-in-the-console
-    """
-    Call in a loop to create terminal progress bar
-    @params:
-        iteration   - Required  : current iteration (Int)
-        total       - Required  : total iterations (Int)
-        prefix      - Optional  : prefix string (Str)
-        suffix      - Optional  : suffix string (Str)
-        decimals    - Optional  : positive number of decimals in percent complete (Int)
-        length      - Optional  : character length of bar (Int)
-        fill        - Optional  : bar fill character (Str)
-        printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-    """
     def progress_bar(self, iteration, total, prefix='Progress:', suffix='Complete', decimals=1, length=50, fill='█', print_end="\r"):
         if self.verbose:
             percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
             filled_length = int(length * iteration // total)
             bar = fill * filled_length + '-' * (length - filled_length)
             print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=print_end)
-            if iteration == total: # Print New Line on Complete
+            if iteration == total:
                 print()
-
 
     def log_video_info(self, length, fps):
         self.log(f"File {self.infile}:")
@@ -52,95 +40,78 @@ class Mp4ToPdf:
         self.log(f"\tLenght: {length} frames.")
         self.log(f"\tDuration: {datetime.timedelta(seconds=length / fps)}.")
 
-
     def get_images(self):
-        video = cv2.VideoCapture(self.infile)
-        count = 0
-        images = []
+        length_holder = {"length": 0}
 
-        length = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        fps = video.get(cv2.CAP_PROP_FPS)
+        def on_open(length, fps):
+            length_holder["length"] = length
+            self.log_video_info(length, fps)
+            self.progress_bar(0, length)
 
-        self.log_video_info(length, fps)
-        self.progress_bar(0, length)
+        def on_progress(count, length):
+            self.progress_bar(count + 1, length)
 
-        while video.isOpened():
-            success, image = video.read()
-
-            if success:
-                images.append(image[:,:,::-1])  # cv2 reads as BRG, [:,:,::-1] converts it to RGB.
-                count += self.n_frame
-                video.set(1, count)
-
-                self.progress_bar(count + 1, length)
-            else:
-                video.release()
-                break
-
-            if self.lim and count > self.lim:
-                break
-
-        self.progress_bar(length, length)
+        images = collect_sampled_frames(
+            self.infile,
+            self.n_frame,
+            lim=self.lim,
+            on_open=on_open,
+            on_progress=on_progress,
+        )
+        self.progress_bar(length_holder["length"], length_holder["length"])
         return images
 
-
     def diff_filter(self, images):
-        pairs = []
-
         self.progress_bar(0, len(images))
-        for i in range(1, len(images)):
-            img = images[i]
-            prev_img = images[i - 1]
-
-            diff = img - prev_img
-            equal_pct = np.mean(np.abs(diff) < 0.01)  # 0.01 to prevent float pointing.
-
-            if equal_pct < self.diff_threshold:
-                pairs.append([img, prev_img])
-
-            self.progress_bar(i + 1, len(images))
-
-        return pairs
-
+        return diff_pairs(
+            images,
+            self.diff_threshold,
+            on_progress=lambda current, total: self.progress_bar(current, total),
+        )
 
     def structural_similarity_filter(self, pairs):
-        fails = []
-
         self.progress_bar(0, len(pairs))
-        for i, p in enumerate(pairs):
-            ssim = structural_similarity(p[0], p[1], channel_axis=-1)
-            if ssim < self.ssim_threshold:
-                fails.append(p)
-            self.progress_bar(i + 1, len(pairs))
-
-        return fails
-
+        return ssim_filter_pairs(
+            pairs,
+            self.ssim_threshold,
+            on_progress=lambda current, total: self.progress_bar(current, total),
+        )
 
     def save_as_pdf(self, images):
-        as_images = [Image.fromarray(image) for image in images]
-        as_images[0].save(self.out, "PDF", resolution=100.0, save_all=True, append_images=as_images[1:])
-
+        save_bgr_frames_as_pdf(self.out, images)
 
     def convert(self):
-        self.log(f"Reading file {args.infile}...")
-        images = self.get_images()
-        self.log(f"Read {len(images)} images.")
+        self.log(f"Reading file {self.infile}...")
+        length_holder = {"length": 0}
 
+        def on_open(length, fps):
+            length_holder["length"] = length
+            self.log_video_info(length, fps)
+            self.progress_bar(0, length)
+
+        def on_progress(count, length):
+            self.progress_bar(count + 1, length)
+
+        uniques, image_count, pair_count = unique_frames_from_iterable(
+            iter_sampled_frames(
+                self.infile,
+                self.n_frame,
+                lim=self.lim,
+                on_open=on_open,
+                on_progress=on_progress,
+            ),
+            self.diff_threshold,
+            self.ssim_threshold,
+        )
+        self.progress_bar(length_holder["length"], length_holder["length"])
+        self.log(f"Read {image_count} images.")
         self.log("Calculating differences....")
-        diff_pairs = self.diff_filter(images)
-        self.log(f"Found {len(diff_pairs)} pairs with differences.")
-
+        self.log(f"Found {pair_count} pairs with differences.")
         self.log("Applying structural similarity...")
-        changes = self.structural_similarity_filter(diff_pairs)
-        self.log(f"Found {len(changes)} uniques with SSIM.")
-
-        uniques = [e[0] for e in changes]
-
+        self.log(f"Found {len(uniques)} uniques with SSIM.")
         self.log("Exporting...")
         self.save_as_pdf(uniques)
-
         self.log("Done.")
-
 
 
 if __name__ == '__main__':
