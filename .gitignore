@@ -12,3 +12,4 @@ env
 venv
 .venv
 .pytest_cache
+external/
