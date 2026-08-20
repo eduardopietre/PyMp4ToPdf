@@ -108,7 +108,7 @@ class Mp4ToPdf:
 
         self.progress_bar(0, len(pairs))
         for i, p in enumerate(pairs):
-            ssim = structural_similarity(p[0], p[1], multichannel=True)
+            ssim = structural_similarity(p[0], p[1], channel_axis=-1)
             if ssim < self.ssim_threshold:
                 fails.append(p)
             self.progress_bar(i + 1, len(pairs))
